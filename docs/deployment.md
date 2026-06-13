@@ -34,20 +34,20 @@ node /opt/wanxia/server/wanxia-server.mjs
 | `WANXIA_REFRESH_INTERVAL_MS` | `3600000` | 预热间隔 |
 | `WANXIA_FAILED_REFRESH_COOLDOWN_MS` | `300000` | 失败后请求触发刷新冷却 |
 
-后台会预热四组数据：
+后台会默认预热全国四组数据，省份数据按请求懒加载并持久化：
 
 ```text
-today/sunrise
-today/sunset
-tomorrow/sunrise
-tomorrow/sunset
+china/today/sunrise
+china/today/sunset
+china/tomorrow/sunrise
+china/tomorrow/sunset
 ```
 
 ## systemd Example
 
 ```ini
 [Unit]
-Description=Xiahou Henan hourly sunrise and sunset cache service
+Description=Xiahou hourly sunrise and sunset cache service
 After=network-online.target
 Wants=network-online.target
 

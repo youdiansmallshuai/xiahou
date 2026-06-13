@@ -45,16 +45,18 @@ describe("App", () => {
 
     expect(await screen.findByText("总体概率")).toBeInTheDocument();
     expect(screen.getByText("烧度预报")).toBeInTheDocument();
-    expect(screen.getByText("河南云图概览")).toBeInTheDocument();
+    expect(screen.getByText("全国云图概览")).toBeInTheDocument();
     expect(screen.getByText("现场修正")).toBeInTheDocument();
     expect(screen.getByText("主要加分项")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "今日" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "明日" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /朝霞/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /晚霞/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("选择全国或省份")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/wanxia-data"))).toBe(true);
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/data/china-provinces.json"))).toBe(true);
     });
     expect(String(fetchMock.mock.calls[0][0])).toContain("/api/wanxia-data");
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("geo.datav"))).toBe(false);
@@ -68,15 +70,19 @@ describe("App", () => {
       expect(screen.getAllByText(/后台预热数据/).length).toBeGreaterThan(0);
     });
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/wanxia-data"))).toBe(true);
     });
   });
 });
 
 function mockOpenMeteoFetch(input: RequestInfo | URL): Promise<unknown> {
   const url = new URL(String(input), "http://127.0.0.1:5173");
+  if (url.pathname === "/data/china-provinces.json" || url.pathname.startsWith("/data/provinces/")) {
+    return Promise.resolve(jsonResponse(geoJsonResponse()));
+  }
   if (url.pathname === "/api/wanxia-data") {
     const selection: PredictionSelection = {
+      regionId: url.searchParams.get("regionId") ?? "china",
       day: url.searchParams.get("day") === "tomorrow" ? "tomorrow" : "today",
       eventType: url.searchParams.get("eventType") === "sunrise" ? "sunrise" : "sunset"
     };
@@ -115,7 +121,50 @@ function wanxiaDataResponse(selection: PredictionSelection): WanxiaData {
     henanOverview: overviewResponse(),
     cloudMap: cloudMapResponse(),
     selection,
+    region: {
+      id: "china",
+      adcode: "100000",
+      name: "全国",
+      shortName: "全国",
+      level: "country",
+      latitude: 35.8617,
+      longitude: 104.1954,
+      bounds: {
+        minLatitude: 31.3,
+        maxLatitude: 36.35,
+        minLongitude: 110.3,
+        maxLongitude: 116.8
+      }
+    },
     fetchedAt: "2026-06-11T09:00:00.000Z"
+  };
+}
+
+function geoJsonResponse() {
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {
+          adcode: 100000,
+          name: "全国",
+          center: [113.6, 34.7]
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [110.3, 31.3],
+              [116.8, 31.3],
+              [116.8, 36.35],
+              [110.3, 36.35],
+              [110.3, 31.3]
+            ]
+          ]
+        }
+      }
+    ]
   };
 }
 

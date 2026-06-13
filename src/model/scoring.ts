@@ -1,4 +1,3 @@
-import { buildLightCorridor, ZHENGZHOU } from "./geo";
 import { directionLabelFromAzimuth, getSolarAzimuthDeg } from "./solar";
 import type {
   AirQualityPoint,
@@ -49,9 +48,9 @@ export function computeSunsetPrediction(
   const eventTime = pickSelectedEventTime(centerForecast, now, selection);
   const targetDate = eventTime.slice(0, 10);
   const eventDate = new Date(eventTime);
-  const eventAzimuthDeg = getSolarAzimuthDeg(eventDate, ZHENGZHOU);
+  const regionCenter = centerForecast.location;
+  const eventAzimuthDeg = getSolarAzimuthDeg(eventDate, regionCenter);
   const eventMeta = eventMetaFor(selection.eventType);
-  const corridor = buildLightCorridor(ZHENGZHOU, eventAzimuthDeg, eventMeta.lightPathLabel);
 
   const lowCloudWindow = collectWindow(bundle, eventTime, eventMeta.lowWindow[0], eventMeta.lowWindow[1]);
   const canvasWindow = collectWindow(bundle, eventTime, eventMeta.canvasWindow[0], eventMeta.canvasWindow[1]);

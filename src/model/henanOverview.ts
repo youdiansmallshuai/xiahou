@@ -19,7 +19,8 @@ export function computeHenanOverview(
   forecasts: CityForecastSample[],
   airQualitySamples: CityAirQualitySample[],
   now = new Date(),
-  selection: PredictionSelection = DEFAULT_SELECTION
+  selection: PredictionSelection = DEFAULT_SELECTION,
+  regionName = "河南"
 ): HenanOverview {
   const cities = forecasts
     .map((sample) => {
@@ -39,7 +40,7 @@ export function computeHenanOverview(
     generatedAt: new Date().toISOString(),
     averageProbability,
     averageFireCloudProbability,
-    summary: buildOverviewSummary(averageProbability, bestCities, selection.eventType),
+    summary: buildOverviewSummary(averageProbability, bestCities, selection.eventType, regionName),
     bestCities,
     riskCities,
     cities
@@ -172,16 +173,18 @@ function computeCityPrediction(
 function buildOverviewSummary(
   averageProbability: number,
   bestCities: HenanCityPrediction[],
-  eventType: SolarEventType
+  eventType: SolarEventType,
+  regionName: string
 ): string {
-  if (!bestCities.length) return "暂无河南城市概览数据";
+  if (!bestCities.length) return `暂无${regionName}概览数据`;
   const names = bestCities.slice(0, 3).map((city) => city.city.shortName).join("、");
   const side = eventType === "sunrise" ? "东边" : "西边";
   const glowLabel = eventType === "sunrise" ? "朝霞" : "晚霞";
-  if (averageProbability >= 70) return `全省${glowLabel}整体偏强，${names}一带最值得看${side}。`;
-  if (averageProbability >= 55) return `全省有局地机会，优先看${names}。`;
-  if (averageProbability >= 40) return `全省机会一般，${names}相对更有看头。`;
-  return `全省整体偏弱，除非临场${side}突然开口。`;
+  const areaLabel = regionName === "全国" ? "全国" : `${regionName}区域`;
+  if (averageProbability >= 70) return `${areaLabel}${glowLabel}整体偏强，${names}一带最值得看${side}。`;
+  if (averageProbability >= 55) return `${areaLabel}有局地机会，优先看${names}。`;
+  if (averageProbability >= 40) return `${areaLabel}机会一般，${names}相对更有看头。`;
+  return `${areaLabel}整体偏弱，除非临场${side}突然开口。`;
 }
 
 function reasonFor(

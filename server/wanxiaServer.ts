@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
 import { fetchWanxiaDataBatch } from "../src/api/openMeteo";
+import { DEFAULT_REGION_ID, normalizeRegionId } from "../src/model/regions";
 import type {
   ForecastDay,
   PredictionSelection,
@@ -15,15 +16,15 @@ const PORT = Number(process.env.WANXIA_PORT ?? 8787);
 const CACHE_FILE = process.env.WANXIA_CACHE_FILE ?? "/tmp/wanxia-cache.json";
 const REFRESH_INTERVAL_MS = Number(process.env.WANXIA_REFRESH_INTERVAL_MS ?? 60 * 60 * 1000);
 const FAILED_REFRESH_COOLDOWN_MS = Number(process.env.WANXIA_FAILED_REFRESH_COOLDOWN_MS ?? 5 * 60 * 1000);
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const execFileAsync = promisify(execFile);
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
 const SELECTIONS: PredictionSelection[] = [
-  { day: "today", eventType: "sunrise" },
-  { day: "today", eventType: "sunset" },
-  { day: "tomorrow", eventType: "sunrise" },
-  { day: "tomorrow", eventType: "sunset" }
+  { day: "today", eventType: "sunrise", regionId: DEFAULT_REGION_ID },
+  { day: "today", eventType: "sunset", regionId: DEFAULT_REGION_ID },
+  { day: "tomorrow", eventType: "sunrise", regionId: DEFAULT_REGION_ID },
+  { day: "tomorrow", eventType: "sunset", regionId: DEFAULT_REGION_ID }
 ];
 
 interface CacheItem {
@@ -50,7 +51,7 @@ interface PersistentCache {
 
 let cache: PersistentCache = emptyCache();
 let refreshPromise: Promise<void> | null = null;
-let lastRefreshAttemptAt = 0;
+let lastFailedRefreshAt = 0;
 
 async function main() {
   installCurlTransport();
@@ -148,32 +149,35 @@ async function getCacheItem(selection: PredictionSelection): Promise<CacheItem |
   if (existing) return existing;
 
   if (!canRetryAfterFailure()) return null;
-  await ensureRefresh();
+  await ensureRefresh([selection]);
+  if (!cache.items[key] && canRetryAfterFailure()) {
+    await refreshAll("request", [selection]);
+  }
   return cache.items[key] ?? null;
 }
 
 function selectionFromUrl(url: URL): PredictionSelection {
+  const regionId = normalizeRegionId(url.searchParams.get("regionId") ?? undefined);
   const day = url.searchParams.get("day") === "tomorrow" ? "tomorrow" : "today";
   const eventType = url.searchParams.get("eventType") === "sunrise" ? "sunrise" : "sunset";
-  return { day, eventType };
+  return { day, eventType, regionId };
 }
 
 function scheduleRefresh() {
   setInterval(() => void refreshAll("interval"), REFRESH_INTERVAL_MS);
 }
 
-async function ensureRefresh(): Promise<void> {
-  if (!refreshPromise) refreshPromise = refreshAll("request");
+async function ensureRefresh(selections = SELECTIONS): Promise<void> {
+  if (!refreshPromise) refreshPromise = refreshAll("request", selections);
   return refreshPromise;
 }
 
 function canRetryAfterFailure(): boolean {
-  return Date.now() - lastRefreshAttemptAt >= FAILED_REFRESH_COOLDOWN_MS;
+  return Date.now() - lastFailedRefreshAt >= FAILED_REFRESH_COOLDOWN_MS;
 }
 
-async function refreshAll(reason: string): Promise<void> {
+async function refreshAll(reason: string, selections = SELECTIONS): Promise<void> {
   if (refreshPromise) return refreshPromise;
-  lastRefreshAttemptAt = Date.now();
 
   refreshPromise = (async () => {
     const startedAt = new Date();
@@ -187,7 +191,7 @@ async function refreshAll(reason: string): Promise<void> {
 
     log(`Refresh started (${reason})`);
     try {
-      const results = await fetchWanxiaDataBatch(new Date(), SELECTIONS);
+      const results = await fetchWanxiaDataBatch(new Date(), selections);
       for (const data of results) {
         const selection = data.selection;
         nextCache.items[selectionKey(selection)] = {
@@ -197,15 +201,17 @@ async function refreshAll(reason: string): Promise<void> {
         };
         log(`Refreshed ${selection.day}/${selection.eventType}`);
       }
+      lastFailedRefreshAt = 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      for (const selection of SELECTIONS) {
+      for (const selection of selections) {
         nextCache.errors.push({
           selection,
           message,
           at: new Date().toISOString()
         });
       }
+      lastFailedRefreshAt = Date.now();
       log(`Refresh failed: ${message}`);
     }
 
@@ -251,7 +257,7 @@ function cacheStatus() {
     refreshStartedAt: cache.refreshStartedAt,
     refreshFinishedAt: cache.refreshFinishedAt,
     refreshing: Boolean(refreshPromise),
-    retryAvailableAt: new Date(lastRefreshAttemptAt + FAILED_REFRESH_COOLDOWN_MS).toISOString(),
+    retryAvailableAt: new Date(lastFailedRefreshAt + FAILED_REFRESH_COOLDOWN_MS).toISOString(),
     selections: Object.fromEntries(
       SELECTIONS.map((selection) => {
         const item = cache.items[selectionKey(selection)];
@@ -267,12 +273,15 @@ function cacheStatus() {
         ];
       })
     ),
+    cachedRegions: Array.from(
+      new Set(Object.values(cache.items).map((item) => item.selection.regionId ?? DEFAULT_REGION_ID))
+    ).sort(),
     errors: cache.errors
   };
 }
 
-function selectionKey(selection: PredictionSelection): `${ForecastDay}-${SolarEventType}` {
-  return `${selection.day}-${selection.eventType}`;
+function selectionKey(selection: PredictionSelection): `${string}-${ForecastDay}-${SolarEventType}` {
+  return `${normalizeRegionId(selection.regionId)}-${selection.day}-${selection.eventType}`;
 }
 
 function isCacheFresh(updatedAt: string): boolean {

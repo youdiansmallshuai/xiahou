@@ -1,4 +1,4 @@
-import type { CloudGridPoint, CloudMap, ForecastPoint, SolarEventType } from "./types";
+import type { CloudGridPoint, CloudMap, ForecastPoint, RegionBounds, SolarEventType } from "./types";
 
 const ONE_MINUTE = 60000;
 
@@ -15,15 +15,23 @@ export interface CloudGridForecastSample {
 }
 
 export function buildHenanCloudGrid(rows = 7, columns = 9): CloudGridPoint[] {
+  return buildRegionCloudGrid(HENAN_MAP_BOUNDS, rows, columns);
+}
+
+export function buildRegionCloudGrid(
+  bounds: RegionBounds,
+  rows = 7,
+  columns = 9
+): CloudGridPoint[] {
   const points: CloudGridPoint[] = [];
   for (let row = 0; row < rows; row += 1) {
     for (let column = 0; column < columns; column += 1) {
       const latitude =
-        HENAN_MAP_BOUNDS.maxLatitude -
-        (row / (rows - 1)) * (HENAN_MAP_BOUNDS.maxLatitude - HENAN_MAP_BOUNDS.minLatitude);
+        bounds.maxLatitude -
+        (row / (rows - 1)) * (bounds.maxLatitude - bounds.minLatitude);
       const longitude =
-        HENAN_MAP_BOUNDS.minLongitude +
-        (column / (columns - 1)) * (HENAN_MAP_BOUNDS.maxLongitude - HENAN_MAP_BOUNDS.minLongitude);
+        bounds.minLongitude +
+        (column / (columns - 1)) * (bounds.maxLongitude - bounds.minLongitude);
       points.push({
         id: `grid-${row}-${column}`,
         row,
@@ -41,7 +49,8 @@ export function computeCloudMap(
   targetTime: string,
   rows: number,
   columns: number,
-  eventType: SolarEventType = "sunset"
+  eventType: SolarEventType = "sunset",
+  bounds: RegionBounds = HENAN_MAP_BOUNDS
 ): CloudMap {
   const canvasRange: [number, number] = eventType === "sunrise" ? [-45, 15] : [-25, 25];
   const blockerRange: [number, number] = eventType === "sunrise" ? [-55, 20] : [-45, 15];
@@ -79,7 +88,7 @@ export function computeCloudMap(
     columns,
     cells,
     summary: summarizeCloudMap(cells.map((cell) => cell.firePotential), eventType),
-    bounds: HENAN_MAP_BOUNDS
+    bounds
   };
 }
 

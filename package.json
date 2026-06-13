@@ -1,16 +1,16 @@
 {
-  "name": "xiahou-henan",
+  "name": "xiahou",
   "version": "0.1.0",
-  "description": "A Henan sunrise and sunset glow forecasting dashboard powered by Open-Meteo forecast and air-quality data.",
+  "description": "A China sunrise and sunset glow forecasting dashboard powered by Open-Meteo forecast and air-quality data.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/youdiansmallshuai/xiahou-henan.git"
+    "url": "git+ssh://git@github.com/youdiansmallshuai/xiahou.git"
   },
   "bugs": {
-    "url": "https://github.com/youdiansmallshuai/xiahou-henan/issues"
+    "url": "https://github.com/youdiansmallshuai/xiahou/issues"
   },
-  "homepage": "https://github.com/youdiansmallshuai/xiahou-henan#readme",
+  "homepage": "https://github.com/youdiansmallshuai/xiahou#readme",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

@@ -15,15 +15,16 @@ import {
   Wind
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchHenanGeoJsonMap } from "./api/henanGeoJson";
+import { fetchRegionGeoJsonMap } from "./api/henanGeoJson";
 import {
   loadWanxiaData,
   type WanxiaDataLoadSource
 } from "./api/openMeteo";
 import {
-  readHenanGeoJsonCache,
+  readRegionGeoJsonCache,
   readWanxiaDataCache,
-  writeHenanGeoJsonCache,
+  samePredictionSelection,
+  writeRegionGeoJsonCache,
   writeWanxiaDataCache
 } from "./lib/cache";
 import {
@@ -35,6 +36,7 @@ import {
 import {
   computeSunsetPrediction
 } from "./model/scoring";
+import { DEFAULT_REGION_ID, REGION_OPTIONS, getRegionOption } from "./model/regions";
 import type {
   CloudMap,
   CloudMapLayer,
@@ -44,6 +46,7 @@ import type {
   HenanOverview,
   ObservationSignal,
   PredictionSelection,
+  RegionOption,
   SolarEventType,
   SunsetPrediction,
   WanxiaData
@@ -60,15 +63,19 @@ interface AppProps {
 
 export function App({ clock = systemClock }: AppProps = {}) {
   const initialCache = readWanxiaDataCache();
-  const initialGeoCache = readHenanGeoJsonCache();
-  const [data, setData] = useState<WanxiaData | null>(() => initialCache?.data ?? null);
+  const initialData = initialCache?.data.region ? initialCache.data : null;
+  const [data, setData] = useState<WanxiaData | null>(() => initialData);
+  const [selectedRegionId, setSelectedRegionId] = useState<string>(
+    () => initialData?.selection.regionId ?? DEFAULT_REGION_ID
+  );
+  const initialGeoCache = readRegionGeoJsonCache(selectedRegionId);
   const [geoMap, setGeoMap] = useState<HenanGeoJsonMap | null>(() => initialGeoCache?.map ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<string | null>(initialCache?.cachedAt ?? data?.fetchedAt ?? null);
-  const [usingCache, setUsingCache] = useState(Boolean(initialCache));
+  const [lastRefresh, setLastRefresh] = useState<string | null>(initialData ? (initialCache?.cachedAt ?? initialData.fetchedAt) : null);
+  const [usingCache, setUsingCache] = useState(Boolean(initialData));
   const [dataSource, setDataSource] = useState<WanxiaDataLoadSource | "local">(
-    initialCache ? "local" : "backend"
+    initialData ? "local" : "backend"
   );
   const [activeSignals, setActiveSignals] = useState<ObservationSignal[]>([]);
   const [selectedDay, setSelectedDay] = useState<ForecastDay>("today");
@@ -76,10 +83,12 @@ export function App({ clock = systemClock }: AppProps = {}) {
   const selection = useMemo<PredictionSelection>(
     () => ({
       day: selectedDay,
-      eventType: selectedEventType
+      eventType: selectedEventType,
+      regionId: selectedRegionId
     }),
-    [selectedDay, selectedEventType]
+    [selectedDay, selectedEventType, selectedRegionId]
   );
+  const selectedRegion = useMemo(() => getRegionOption(selectedRegionId), [selectedRegionId]);
   const selectedGlowLabel = selectedEventType === "sunrise" ? "朝霞" : "晚霞";
 
   const refresh = useCallback(async () => {
@@ -94,7 +103,7 @@ export function App({ clock = systemClock }: AppProps = {}) {
       writeWanxiaDataCache(result.data);
     } catch (requestError) {
       const cached = readWanxiaDataCache();
-      if (cached && sameSelection(cached.data.selection, selection)) {
+      if (cached?.data.region && sameSelection(cached.data.selection, selection)) {
         setData(cached.data);
         setLastRefresh(cached.cachedAt);
         setUsingCache(true);
@@ -113,29 +122,30 @@ export function App({ clock = systemClock }: AppProps = {}) {
   }, [refresh]);
 
   useEffect(() => {
-    const cachedMap = readHenanGeoJsonCache(GEO_TTL_MS);
+    const cachedMap = readRegionGeoJsonCache(selectedRegionId, GEO_TTL_MS);
     if (cachedMap) {
       setGeoMap(cachedMap.map);
       return;
     }
+    setGeoMap(null);
     let cancelled = false;
-    void fetchHenanGeoJsonMap()
+    void fetchRegionGeoJsonMap(selectedRegionId)
       .then((nextMap) => {
         if (cancelled) return;
         setGeoMap(nextMap);
-        writeHenanGeoJsonCache(nextMap);
+        writeRegionGeoJsonCache(nextMap);
       })
       .catch((requestError) => {
-        const staleMap = readHenanGeoJsonCache();
+        const staleMap = readRegionGeoJsonCache(selectedRegionId);
         if (staleMap && !cancelled) setGeoMap(staleMap.map);
         if (!staleMap && !cancelled) {
-          setError(requestError instanceof Error ? requestError.message : "河南地图边界加载失败");
+          setError(requestError instanceof Error ? requestError.message : "地图边界加载失败");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedRegionId]);
 
   const prediction = useMemo<SunsetPrediction | null>(() => {
     if (!data) return null;
@@ -161,13 +171,14 @@ export function App({ clock = systemClock }: AppProps = {}) {
 
   return (
     <main className="app-shell">
-      <section className="topbar" aria-label="郑州朝霞晚霞预测概览">
+      <section className="topbar" aria-label="全国朝霞晚霞预测概览">
         <div className="brand-lockup">
-          <p className="eyebrow">WANXIA OPS · HENAN GLOW CLOUD INTELLIGENCE</p>
-          <h1>郑州朝霞 / 晚霞预测中心</h1>
+          <p className="eyebrow">XIAHOU OPS · CHINA GLOW CLOUD INTELLIGENCE</p>
+          <h1>霞候 · 全国朝霞 / 晚霞预测</h1>
           <div className="status-row" aria-label="数据状态">
             <span>{dataSourceLabel(dataSource, usingCache)}</span>
             <span>Open-Meteo</span>
+            <span>{selectedRegion.shortName}</span>
             <span>{selectedDay === "today" ? "今日" : "明日"}{selectedGlowLabel}</span>
             <span>{skyState.label}</span>
             <span>{lastRefresh ? formatDateTime(lastRefresh) : "等待数据"}</span>
@@ -190,8 +201,10 @@ export function App({ clock = systemClock }: AppProps = {}) {
       <ModeStrip
         selectedDay={selectedDay}
         selectedEventType={selectedEventType}
+        selectedRegionId={selectedRegionId}
         onDayChange={setSelectedDay}
         onEventTypeChange={setSelectedEventType}
+        onRegionChange={setSelectedRegionId}
       />
 
       {error ? (
@@ -207,6 +220,7 @@ export function App({ clock = systemClock }: AppProps = {}) {
           overview={data.henanOverview}
           cloudMap={data.cloudMap}
           geoMap={geoMap}
+          region={data.region}
           lastRefresh={lastRefresh}
           usingCache={usingCache}
           dataSource={dataSource}
@@ -225,6 +239,7 @@ interface DashboardProps {
   overview: HenanOverview | null;
   cloudMap: CloudMap | null;
   geoMap: HenanGeoJsonMap | null;
+  region: RegionOption;
   lastRefresh: string | null;
   usingCache: boolean;
   dataSource: WanxiaDataLoadSource | "local";
@@ -255,6 +270,7 @@ function Dashboard({
   overview,
   cloudMap,
   geoMap,
+  region,
   lastRefresh,
   usingCache,
   dataSource,
@@ -271,7 +287,7 @@ function Dashboard({
         <div className="film-stock" aria-hidden="true">
           <span>WANXIA NEGATIVE 01</span>
           <span>EV LIVE METER</span>
-          <span>ZHENGZHOU / HENAN</span>
+          <span>{region.shortName.toUpperCase()} / CHINA</span>
         </div>
         <div className="score-copy">
           <p className="eyebrow">{grade.label}</p>
@@ -298,7 +314,7 @@ function Dashboard({
       <BurnForecastPanel forecast={burnForecast} prediction={prediction} />
 
       {overview && cloudMap && geoMap ? (
-        <HenanCloudMap overview={overview} cloudMap={cloudMap} geoMap={geoMap} />
+        <HenanCloudMap overview={overview} cloudMap={cloudMap} geoMap={geoMap} region={region} />
       ) : null}
 
       <section className="content-grid">
@@ -434,18 +450,40 @@ function BurnForecastPanel({
 }
 
 function ModeStrip({
+  selectedRegionId,
   selectedDay,
   selectedEventType,
+  onRegionChange,
   onDayChange,
   onEventTypeChange
 }: {
+  selectedRegionId: string;
   selectedDay: ForecastDay;
   selectedEventType: SolarEventType;
+  onRegionChange: (regionId: string) => void;
   onDayChange: (day: ForecastDay) => void;
   onEventTypeChange: (eventType: SolarEventType) => void;
 }) {
   return (
     <section className="mode-strip" aria-label="预报选择">
+      <div className="segment-group region-group">
+        <div className="segment-title">
+          <MapPinned size={17} aria-hidden="true" />
+          <span>区域</span>
+        </div>
+        <select
+          className="region-select"
+          value={selectedRegionId}
+          onChange={(event) => onRegionChange(event.target.value)}
+          aria-label="选择全国或省份"
+        >
+          {REGION_OPTIONS.map((region) => (
+            <option key={region.id} value={region.id}>
+              {region.name}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="segment-group">
         <div className="segment-title">
           <CalendarDays size={17} aria-hidden="true" />
@@ -499,11 +537,13 @@ function ModeStrip({
 function HenanCloudMap({
   overview,
   cloudMap,
-  geoMap
+  geoMap,
+  region
 }: {
   overview: HenanOverview;
   cloudMap: CloudMap;
   geoMap: HenanGeoJsonMap;
+  region: RegionOption;
 }) {
   const strongest = overview.bestCities[0];
   const [layer, setLayer] = useState<CloudMapLayer>("potential");
@@ -530,16 +570,16 @@ function HenanCloudMap({
   ];
 
   return (
-    <section className="panel map-panel" aria-label="河南省云图概览">
+    <section className="panel map-panel" aria-label={`${region.shortName}云图概览`}>
       <div className="map-copy">
-        <div className="map-film-code" aria-hidden="true">CONTACT SHEET / HENAN CLOUD FIELD</div>
+        <div className="map-film-code" aria-hidden="true">CONTACT SHEET / REGIONAL CLOUD FIELD</div>
         <div className="panel-heading">
           <MapPinned size={20} aria-hidden="true" />
-          <h3>河南云图概览</h3>
+          <h3>{region.shortName}云图概览</h3>
         </div>
         <p className="map-summary">{cloudMap.summary}</p>
         <div className="map-subline">
-          <span>真实河南边界</span>
+          <span>{region.level === "country" ? "全国省界" : `${region.shortName}真实边界`}</span>
           <span>{cloudMap.rows}×{cloudMap.columns} 预报网格</span>
           <span>{formatClock(cloudMap.targetTime)} 目标窗口</span>
         </div>
@@ -572,7 +612,7 @@ function HenanCloudMap({
             </button>
           ))}
         </div>
-        <svg className="henan-map cloud-map" viewBox="0 0 420 430" role="img" aria-label="河南真实范围云图">
+        <svg className="henan-map cloud-map" viewBox="0 0 420 430" role="img" aria-label={`${region.shortName}真实范围云图`}>
           <defs>
             <clipPath id="henan-cloud-clip">
               <path d={mapGeometry.provincePath} />
@@ -858,7 +898,7 @@ function EmptyState({ loading }: { loading: boolean }) {
   return (
     <div className="empty-state">
       <CloudSun size={36} aria-hidden="true" />
-      <h2>{loading ? "正在拉取郑州云层和空气质量" : "暂无朝霞 / 晚霞预测数据"}</h2>
+      <h2>{loading ? "正在拉取云层和空气质量" : "暂无朝霞 / 晚霞预测数据"}</h2>
     </div>
   );
 }
@@ -1130,7 +1170,7 @@ function sameSelection(
   left: PredictionSelection | undefined,
   right: PredictionSelection
 ): boolean {
-  return left?.day === right.day && left.eventType === right.eventType;
+  return samePredictionSelection(left, right);
 }
 
 function formatClock(time: string): string {

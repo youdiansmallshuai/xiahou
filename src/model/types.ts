@@ -19,11 +19,28 @@ export type ForecastDay = "today" | "tomorrow";
 export interface PredictionSelection {
   eventType: SolarEventType;
   day: ForecastDay;
+  regionId?: string;
 }
 
 export interface Coordinates {
   latitude: number;
   longitude: number;
+}
+
+export interface RegionBounds {
+  minLatitude: number;
+  maxLatitude: number;
+  minLongitude: number;
+  maxLongitude: number;
+}
+
+export interface RegionOption extends Coordinates {
+  id: string;
+  adcode: string;
+  name: string;
+  shortName: string;
+  level: "country" | "province";
+  bounds: RegionBounds;
 }
 
 export interface HenanCity extends Coordinates {
@@ -155,12 +172,7 @@ export interface CloudMap {
   columns: number;
   cells: CloudMapCell[];
   summary: string;
-  bounds: {
-    minLatitude: number;
-    maxLatitude: number;
-    minLongitude: number;
-    maxLongitude: number;
-  };
+  bounds: RegionBounds;
 }
 
 export interface WanxiaData {
@@ -168,6 +180,7 @@ export interface WanxiaData {
   henanOverview: HenanOverview;
   cloudMap: CloudMap;
   selection: PredictionSelection;
+  region: RegionOption;
   fetchedAt: string;
 }
 
@@ -196,6 +209,7 @@ export interface GeoJsonFeatureCollection {
 }
 
 export interface HenanGeoJsonMap {
+  region: RegionOption;
   province: GeoJsonFeatureCollection;
   cities: GeoJsonFeatureCollection;
   fetchedAt: string;

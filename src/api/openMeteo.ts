@@ -1,7 +1,12 @@
-import { buildHenanCloudGrid, computeCloudMap } from "../model/cloudMap";
-import { buildLightCorridor, ZHENGZHOU } from "../model/geo";
-import { HENAN_CITIES } from "../model/henanCities";
+import { buildRegionCloudGrid, computeCloudMap } from "../model/cloudMap";
+import { buildLightCorridor } from "../model/geo";
 import { computeHenanOverview } from "../model/henanOverview";
+import {
+  DEFAULT_REGION_ID,
+  getRegionOption,
+  getRegionSamplePoints,
+  normalizeRegionId
+} from "../model/regions";
 import { getSolarAzimuthDeg } from "../model/solar";
 import type {
   AirQualityPoint,
@@ -105,13 +110,14 @@ interface ForecastRequestLocation<T> {
 
 const DEFAULT_SELECTION: PredictionSelection = {
   eventType: "sunset",
-  day: "today"
+  day: "today",
+  regionId: DEFAULT_REGION_ID
 };
 const ALL_SELECTIONS: PredictionSelection[] = [
-  { day: "today", eventType: "sunrise" },
-  { day: "today", eventType: "sunset" },
-  { day: "tomorrow", eventType: "sunrise" },
-  { day: "tomorrow", eventType: "sunset" }
+  { day: "today", eventType: "sunrise", regionId: DEFAULT_REGION_ID },
+  { day: "today", eventType: "sunset", regionId: DEFAULT_REGION_ID },
+  { day: "tomorrow", eventType: "sunrise", regionId: DEFAULT_REGION_ID },
+  { day: "tomorrow", eventType: "sunset", regionId: DEFAULT_REGION_ID }
 ];
 
 export async function loadWanxiaData(
@@ -142,30 +148,52 @@ export async function fetchWanxiaDataBatch(
   now = new Date(),
   selections: PredictionSelection[] = ALL_SELECTIONS
 ): Promise<WanxiaData[]> {
+  const results: WanxiaData[] = [];
+  const groupedSelections = groupSelectionsByRegion(selections);
+  for (const [regionId, regionSelections] of groupedSelections) {
+    results.push(...(await fetchWanxiaDataForRegionBatch(now, regionSelections, regionId)));
+  }
+  return results;
+}
+
+async function fetchWanxiaDataForRegionBatch(
+  now: Date,
+  selections: PredictionSelection[],
+  regionId: string
+): Promise<WanxiaData[]> {
   const fetchedAt = new Date().toISOString();
+  const region = getRegionOption(regionId);
+  const target = {
+    id: region.id,
+    name: region.name,
+    shortName: region.shortName,
+    latitude: region.latitude,
+    longitude: region.longitude
+  };
+  const regionSamplePoints = getRegionSamplePoints(region.id);
   const [centerForecast] = await fetchForecastForLocations([
     {
-      id: "zhengzhou-target",
-      latitude: ZHENGZHOU.latitude,
-      longitude: ZHENGZHOU.longitude,
-      source: ZHENGZHOU
+      id: `${region.id}-target`,
+      latitude: region.latitude,
+      longitude: region.longitude,
+      source: target
     }
   ]);
   const contexts = selections.map((selection) => {
     const targetEventTime = pickSelectedEventTime(centerForecast, now, selection);
-    const eventAzimuth = getSolarAzimuthDeg(new Date(targetEventTime), ZHENGZHOU);
+    const eventAzimuth = getSolarAzimuthDeg(new Date(targetEventTime), region);
     return {
-      key: selectionKey(selection),
-      selection,
+      key: selectionKey({ ...selection, regionId: region.id }),
+      selection: { ...selection, regionId: region.id },
       targetEventTime,
       corridor: buildLightCorridor(
-        ZHENGZHOU,
+        target,
         eventAzimuth,
         selection.eventType === "sunrise" ? "东方光路" : "西方光路"
       )
     };
   });
-  const cloudGrid = buildHenanCloudGrid(CLOUD_GRID_ROWS, CLOUD_GRID_COLUMNS);
+  const cloudGrid = buildRegionCloudGrid(region.bounds, CLOUD_GRID_ROWS, CLOUD_GRID_COLUMNS);
 
   const corridorRequests = contexts.flatMap((context) =>
     context.corridor.map((location) => ({
@@ -181,16 +209,16 @@ export async function fetchWanxiaDataBatch(
 
   const corridorForecasts = await fetchForecastForLocations(corridorRequests);
   const cityForecasts = await fetchForecastForLocations(
-    HENAN_CITIES.map((city) => forecastLocation(city.id, city))
+    regionSamplePoints.map((city) => forecastLocation(city.id, city))
   );
   const cloudForecasts = await fetchForecastForLocations(
     cloudGrid.map((point) => forecastLocation(point.id, point)),
     WEATHER_CHUNK_SIZE
   );
-  const cityAirQuality = await fetchAirQualityForCities(HENAN_CITIES);
+  const cityAirQuality = await fetchAirQualityForCities(regionSamplePoints);
 
   const zhengzhouAirQuality =
-    cityAirQuality.find((sample) => sample.cityId === "zhengzhou")?.hourly ?? [];
+    cityAirQuality.find((sample) => sample.cityId === regionSamplePoints[0]?.id)?.hourly ?? [];
   const cityForecastSamples: CityForecastSample[] = cityForecasts.map((sample) => ({
       city: sample.source,
       dates: sample.dates,
@@ -232,14 +260,16 @@ export async function fetchWanxiaDataBatch(
       cityForecastSamples,
       cityAirQuality,
       now,
-      context.selection
+      context.selection,
+      region.shortName
     );
     const cloudMap = computeCloudMap(
       cloudForecastSamples,
       context.targetEventTime,
       CLOUD_GRID_ROWS,
       CLOUD_GRID_COLUMNS,
-      context.selection.eventType
+      context.selection.eventType,
+      region.bounds
     );
 
     return {
@@ -247,6 +277,7 @@ export async function fetchWanxiaDataBatch(
       henanOverview,
       cloudMap,
       selection: context.selection,
+      region,
       fetchedAt
     };
   });
@@ -274,13 +305,14 @@ export async function fetchForecast(corridor: CorridorPoint[]): Promise<Forecast
 }
 
 export async function fetchAirQuality(): Promise<AirQualityPoint[]> {
+  const region = getRegionOption(DEFAULT_REGION_ID);
   const [sample] = await fetchAirQualityForCities([
     {
-      id: "zhengzhou",
-      name: "郑州",
-      shortName: "郑州",
-      latitude: ZHENGZHOU.latitude,
-      longitude: ZHENGZHOU.longitude
+      id: region.id,
+      name: region.name,
+      shortName: region.shortName,
+      latitude: region.latitude,
+      longitude: region.longitude
     }
   ]);
   return sample.hourly;
@@ -324,25 +356,31 @@ async function fetchForecastForLocations<T>(
 }
 
 async function fetchAirQualityForCities(cities: HenanCity[]): Promise<CityAirQualitySample[]> {
-  const params = new URLSearchParams({
-    latitude: cities.map((city) => city.latitude.toFixed(4)).join(","),
-    longitude: cities.map((city) => city.longitude.toFixed(4)).join(","),
-    timezone: "Asia/Shanghai",
-    forecast_days: "3",
-    hourly: AIR_HOURLY
-  });
-  const json = await fetchOpenMeteoJson<OpenMeteoAirResponse | OpenMeteoAirResponse[]>(
-    AIR_QUALITY_API_ENDPOINT,
-    AIR_QUALITY_DIRECT_ENDPOINT,
-    params,
-    "空气质量"
-  );
-  const payloads: OpenMeteoAirResponse[] = Array.isArray(json) ? json : [json];
-
-  return payloads.map((payload, index) => ({
-    cityId: cities[index].id,
-    hourly: normalizeAirHourly(payload)
-  }));
+  const chunks = chunk(cities, WEATHER_CHUNK_SIZE);
+  const samples: CityAirQualitySample[] = [];
+  for (const cityChunk of chunks) {
+    const params = new URLSearchParams({
+      latitude: cityChunk.map((city) => city.latitude.toFixed(4)).join(","),
+      longitude: cityChunk.map((city) => city.longitude.toFixed(4)).join(","),
+      timezone: "Asia/Shanghai",
+      forecast_days: "3",
+      hourly: AIR_HOURLY
+    });
+    const json = await fetchOpenMeteoJson<OpenMeteoAirResponse | OpenMeteoAirResponse[]>(
+      AIR_QUALITY_API_ENDPOINT,
+      AIR_QUALITY_DIRECT_ENDPOINT,
+      params,
+      "空气质量"
+    );
+    const payloads: OpenMeteoAirResponse[] = Array.isArray(json) ? json : [json];
+    samples.push(
+      ...payloads.map((payload, index) => ({
+        cityId: cityChunk[index].id,
+        hourly: normalizeAirHourly(payload)
+      }))
+    );
+  }
+  return samples;
 }
 
 function forecastLocation<T extends CorridorPoint | HenanCity | CloudGridPoint>(
@@ -358,7 +396,7 @@ function forecastLocation<T extends CorridorPoint | HenanCity | CloudGridPoint>(
 }
 
 function selectionKey(selection: PredictionSelection): string {
-  return `${selection.day}-${selection.eventType}`;
+  return `${normalizeRegionId(selection.regionId)}-${selection.day}-${selection.eventType}`;
 }
 
 async function fetchOpenMeteoJson<T>(
@@ -432,6 +470,7 @@ function delay(ms: number): Promise<void> {
 
 async function fetchBackendWanxiaData(selection: PredictionSelection): Promise<WanxiaData> {
   const params = new URLSearchParams({
+    regionId: normalizeRegionId(selection.regionId),
     day: selection.day,
     eventType: selection.eventType
   });
@@ -440,6 +479,16 @@ async function fetchBackendWanxiaData(selection: PredictionSelection): Promise<W
     throw new Error(`后台预热数据请求失败：${response.status}`);
   }
   return response.json() as Promise<WanxiaData>;
+}
+
+function groupSelectionsByRegion(selections: PredictionSelection[]): Map<string, PredictionSelection[]> {
+  const groups = new Map<string, PredictionSelection[]>();
+  for (const selection of selections) {
+    const regionId = normalizeRegionId(selection.regionId);
+    const nextSelection = { ...selection, regionId };
+    groups.set(regionId, [...(groups.get(regionId) ?? []), nextSelection]);
+  }
+  return groups;
 }
 
 function canUseSameOriginProxy(): boolean {

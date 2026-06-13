@@ -1,9 +1,11 @@
 import type {
   HenanGeoJsonMap,
   HenanOverview,
+  PredictionSelection,
   WanxiaData,
   WeatherBundle
 } from "../model/types";
+import { DEFAULT_REGION_ID, normalizeRegionId } from "../model/regions";
 
 const WEATHER_CACHE_KEY = "wanxia.weatherBundle.v1";
 const HENAN_CACHE_KEY = "wanxia.henanOverview.v1";
@@ -105,8 +107,16 @@ export function writeWanxiaDataCache(data: WanxiaData): void {
 }
 
 export function readHenanGeoJsonCache(maxAgeMs?: number): CachedHenanGeoJsonMap | null {
+  return readRegionGeoJsonCache("410000", maxAgeMs);
+}
+
+export function writeHenanGeoJsonCache(map: HenanGeoJsonMap): void {
+  writeRegionGeoJsonCache(map);
+}
+
+export function readRegionGeoJsonCache(regionId = DEFAULT_REGION_ID, maxAgeMs?: number): CachedHenanGeoJsonMap | null {
   try {
-    const raw = localStorage.getItem(HENAN_GEO_CACHE_KEY);
+    const raw = localStorage.getItem(regionGeoCacheKey(regionId));
     if (!raw) return null;
     const cached = JSON.parse(raw) as CachedHenanGeoJsonMap;
     if (maxAgeMs !== undefined && isCacheExpired(cached.cachedAt, maxAgeMs)) return null;
@@ -116,10 +126,10 @@ export function readHenanGeoJsonCache(maxAgeMs?: number): CachedHenanGeoJsonMap 
   }
 }
 
-export function writeHenanGeoJsonCache(map: HenanGeoJsonMap): void {
+export function writeRegionGeoJsonCache(map: HenanGeoJsonMap): void {
   try {
     localStorage.setItem(
-      HENAN_GEO_CACHE_KEY,
+      regionGeoCacheKey(map.region?.id),
       JSON.stringify({
         map,
         cachedAt: new Date().toISOString()
@@ -128,6 +138,21 @@ export function writeHenanGeoJsonCache(map: HenanGeoJsonMap): void {
   } catch {
     // Cache is a convenience only. The app should still work if storage is blocked.
   }
+}
+
+export function samePredictionSelection(
+  left: PredictionSelection | undefined,
+  right: PredictionSelection
+): boolean {
+  return (
+    left?.day === right.day &&
+    left.eventType === right.eventType &&
+    normalizeRegionId(left.regionId) === normalizeRegionId(right.regionId)
+  );
+}
+
+function regionGeoCacheKey(regionId: string | undefined): string {
+  return `${HENAN_GEO_CACHE_KEY}.${normalizeRegionId(regionId)}`;
 }
 
 function isCacheExpired(cachedAt: string, maxAgeMs: number): boolean {
