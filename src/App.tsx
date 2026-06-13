@@ -63,7 +63,7 @@ interface AppProps {
 
 export function App({ clock = systemClock }: AppProps = {}) {
   const initialCache = readWanxiaDataCache();
-  const initialData = initialCache?.data.region ? initialCache.data : null;
+  const initialData = initialCache?.data.region && initialCache.data.benchmark ? initialCache.data : null;
   const [data, setData] = useState<WanxiaData | null>(() => initialData);
   const [selectedRegionId, setSelectedRegionId] = useState<string>(
     () => initialData?.selection.regionId ?? DEFAULT_REGION_ID
@@ -103,7 +103,7 @@ export function App({ clock = systemClock }: AppProps = {}) {
       writeWanxiaDataCache(result.data);
     } catch (requestError) {
       const cached = readWanxiaDataCache();
-      if (cached?.data.region && sameSelection(cached.data.selection, selection)) {
+      if (cached?.data.region && cached.data.benchmark && sameSelection(cached.data.selection, selection)) {
         setData(cached.data);
         setLastRefresh(cached.cachedAt);
         setUsingCache(true);
@@ -179,6 +179,7 @@ export function App({ clock = systemClock }: AppProps = {}) {
             <span>{dataSourceLabel(dataSource, usingCache)}</span>
             <span>Open-Meteo</span>
             <span>{selectedRegion.shortName}</span>
+            <span>基准 {data?.benchmark.shortName ?? (selectedRegionId === DEFAULT_REGION_ID ? "北京" : selectedRegion.shortName)}</span>
             <span>{selectedDay === "today" ? "今日" : "明日"}{selectedGlowLabel}</span>
             <span>{skyState.label}</span>
             <span>{lastRefresh ? formatDateTime(lastRefresh) : "等待数据"}</span>
@@ -221,6 +222,7 @@ export function App({ clock = systemClock }: AppProps = {}) {
           cloudMap={data.cloudMap}
           geoMap={geoMap}
           region={data.region}
+          benchmark={data.benchmark}
           lastRefresh={lastRefresh}
           usingCache={usingCache}
           dataSource={dataSource}
@@ -240,6 +242,7 @@ interface DashboardProps {
   cloudMap: CloudMap | null;
   geoMap: HenanGeoJsonMap | null;
   region: RegionOption;
+  benchmark: WanxiaData["benchmark"];
   lastRefresh: string | null;
   usingCache: boolean;
   dataSource: WanxiaDataLoadSource | "local";
@@ -271,6 +274,7 @@ function Dashboard({
   cloudMap,
   geoMap,
   region,
+  benchmark,
   lastRefresh,
   usingCache,
   dataSource,
@@ -296,6 +300,7 @@ function Dashboard({
             <Metric icon={<Flame size={18} />} label="大片火烧云" value={`${prediction.fireCloudProbability}%`} />
             <Metric icon={<Timer size={18} />} label={prediction.eventLabel} value={formatClock(prediction.eventTime)} />
             <Metric icon={<Compass size={18} />} label="主看方向" value={prediction.directionLabel} />
+            <Metric icon={<MapPinned size={18} />} label="基准城市" value={benchmark.shortName} />
           </div>
         </div>
         <div className={`score-ring ${grade.className}`}>
@@ -584,7 +589,7 @@ function HenanCloudMap({
           <span>{formatClock(cloudMap.targetTime)} 目标窗口</span>
         </div>
         <div className="map-stats">
-          <Metric icon={<Flame size={18} />} label="全省均值" value={`${overview.averageProbability}%`} />
+          <Metric icon={<Flame size={18} />} label={region.level === "country" ? "全国均值" : "区域均值"} value={`${overview.averageProbability}%`} />
           <Metric icon={<Sparkles size={18} />} label="大片云均值" value={`${overview.averageFireCloudProbability}%`} />
           <Metric
             icon={<Compass size={18} />}

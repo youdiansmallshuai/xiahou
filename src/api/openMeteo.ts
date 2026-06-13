@@ -3,6 +3,7 @@ import { buildLightCorridor } from "../model/geo";
 import { computeHenanOverview } from "../model/henanOverview";
 import {
   DEFAULT_REGION_ID,
+  getRegionBenchmarkPoint,
   getRegionOption,
   getRegionSamplePoints,
   normalizeRegionId
@@ -163,31 +164,25 @@ async function fetchWanxiaDataForRegionBatch(
 ): Promise<WanxiaData[]> {
   const fetchedAt = new Date().toISOString();
   const region = getRegionOption(regionId);
-  const target = {
-    id: region.id,
-    name: region.name,
-    shortName: region.shortName,
-    latitude: region.latitude,
-    longitude: region.longitude
-  };
+  const benchmark = getRegionBenchmarkPoint(region.id);
   const regionSamplePoints = getRegionSamplePoints(region.id);
   const [centerForecast] = await fetchForecastForLocations([
     {
       id: `${region.id}-target`,
-      latitude: region.latitude,
-      longitude: region.longitude,
-      source: target
+      latitude: benchmark.latitude,
+      longitude: benchmark.longitude,
+      source: benchmark
     }
   ]);
   const contexts = selections.map((selection) => {
     const targetEventTime = pickSelectedEventTime(centerForecast, now, selection);
-    const eventAzimuth = getSolarAzimuthDeg(new Date(targetEventTime), region);
+    const eventAzimuth = getSolarAzimuthDeg(new Date(targetEventTime), benchmark);
     return {
       key: selectionKey({ ...selection, regionId: region.id }),
       selection: { ...selection, regionId: region.id },
       targetEventTime,
       corridor: buildLightCorridor(
-        target,
+        benchmark,
         eventAzimuth,
         selection.eventType === "sunrise" ? "东方光路" : "西方光路"
       )
@@ -278,6 +273,7 @@ async function fetchWanxiaDataForRegionBatch(
       cloudMap,
       selection: context.selection,
       region,
+      benchmark,
       fetchedAt
     };
   });
@@ -305,14 +301,14 @@ export async function fetchForecast(corridor: CorridorPoint[]): Promise<Forecast
 }
 
 export async function fetchAirQuality(): Promise<AirQualityPoint[]> {
-  const region = getRegionOption(DEFAULT_REGION_ID);
+  const benchmark = getRegionBenchmarkPoint(DEFAULT_REGION_ID);
   const [sample] = await fetchAirQualityForCities([
     {
-      id: region.id,
-      name: region.name,
-      shortName: region.shortName,
-      latitude: region.latitude,
-      longitude: region.longitude
+      id: benchmark.id,
+      name: benchmark.name,
+      shortName: benchmark.shortName,
+      latitude: benchmark.latitude,
+      longitude: benchmark.longitude
     }
   ]);
   return sample.hourly;

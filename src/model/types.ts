@@ -181,6 +181,7 @@ export interface WanxiaData {
   cloudMap: CloudMap;
   selection: PredictionSelection;
   region: RegionOption;
+  benchmark: HenanCity;
   fetchedAt: string;
 }
 

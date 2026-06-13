@@ -4192,6 +4192,28 @@ export function getRegionSamplePoints(regionId: string | undefined): HenanCity[]
   return PROVINCE_SAMPLES[normalized] ?? [regionToPoint(getRegionOption(normalized))];
 }
 
+const DIRECT_REGION_IDS = new Set(["110000", "120000", "310000", "500000", "710000", "810000", "820000"]);
+
+export function getRegionBenchmarkPoint(regionId: string | undefined): HenanCity {
+  const normalized = normalizeRegionId(regionId);
+  if (normalized === DEFAULT_REGION_ID) {
+    return {
+      id: "beijing",
+      name: "北京",
+      shortName: "北京",
+      latitude: 39.904989,
+      longitude: 116.405285
+    };
+  }
+
+  const region = getRegionOption(normalized);
+  if (DIRECT_REGION_IDS.has(normalized)) {
+    return regionToPoint(region);
+  }
+
+  return getRegionSamplePoints(normalized)[0] ?? regionToPoint(region);
+}
+
 function regionToPoint(region: RegionOption): HenanCity {
   return {
     id: region.id,

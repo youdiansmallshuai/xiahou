@@ -46,6 +46,8 @@ describe("App", () => {
     expect(await screen.findByText("总体概率")).toBeInTheDocument();
     expect(screen.getByText("烧度预报")).toBeInTheDocument();
     expect(screen.getByText("全国云图概览")).toBeInTheDocument();
+    expect(screen.getByText("基准城市")).toBeInTheDocument();
+    expect(screen.getAllByText("北京").length).toBeGreaterThan(0);
     expect(screen.getByText("现场修正")).toBeInTheDocument();
     expect(screen.getByText("主要加分项")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "今日" })).toBeInTheDocument();
@@ -135,6 +137,13 @@ function wanxiaDataResponse(selection: PredictionSelection): WanxiaData {
         minLongitude: 110.3,
         maxLongitude: 116.8
       }
+    },
+    benchmark: {
+      id: "beijing",
+      name: "北京",
+      shortName: "北京",
+      latitude: 39.904989,
+      longitude: 116.405285
     },
     fetchedAt: "2026-06-11T09:00:00.000Z"
   };

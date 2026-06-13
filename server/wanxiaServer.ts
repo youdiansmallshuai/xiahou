@@ -16,7 +16,7 @@ const PORT = Number(process.env.WANXIA_PORT ?? 8787);
 const CACHE_FILE = process.env.WANXIA_CACHE_FILE ?? "/tmp/wanxia-cache.json";
 const REFRESH_INTERVAL_MS = Number(process.env.WANXIA_REFRESH_INTERVAL_MS ?? 60 * 60 * 1000);
 const FAILED_REFRESH_COOLDOWN_MS = Number(process.env.WANXIA_FAILED_REFRESH_COOLDOWN_MS ?? 5 * 60 * 1000);
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const execFileAsync = promisify(execFile);
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
