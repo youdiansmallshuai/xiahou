@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-server/
+*.tsbuildinfo
+.DS_Store
+screenshots/
+.omx/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
