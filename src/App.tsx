@@ -563,10 +563,23 @@ function HenanCloudMap({
       }))
     };
   }, [geoMap]);
-  const surfaceCells = useMemo(
-    () => buildCloudSurfaceCells(cloudMap, layer, mapGeometry.bounds),
+  const surfaceBlobs = useMemo(
+    () => buildCloudSurfaceBlobs(cloudMap, layer, mapGeometry.bounds),
     [cloudMap, layer, mapGeometry.bounds]
   );
+  const contourBands = useMemo(
+    () => buildCloudContourBands(surfaceBlobs, layer),
+    [layer, surfaceBlobs]
+  );
+  const labeledCityIds = useMemo(() => {
+    if (region.level === "country") {
+      return new Set(overview.bestCities.slice(0, 9).map((city) => city.city.id));
+    }
+    if (overview.cities.length <= 18) {
+      return new Set(overview.cities.map((city) => city.city.id));
+    }
+    return new Set(overview.bestCities.slice(0, 14).map((city) => city.city.id));
+  }, [overview.bestCities, overview.cities, region.level]);
   const layerOptions: Array<{ value: CloudMapLayer; label: string }> = [
     { value: "potential", label: "火烧云潜力" },
     { value: "low", label: "低云遮挡" },
@@ -622,32 +635,72 @@ function HenanCloudMap({
             <clipPath id="henan-cloud-clip">
               <path d={mapGeometry.provincePath} />
             </clipPath>
-            <filter id="soft-cloud">
-              <feGaussianBlur stdDeviation="9" />
+            <linearGradient id="map-paper-gradient" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stopColor="#fbf7e9" />
+              <stop offset="48%" stopColor="#efe6cf" />
+              <stop offset="100%" stopColor="#e1d5bb" />
+            </linearGradient>
+            <radialGradient id="map-vignette" cx="50%" cy="46%" r="72%">
+              <stop offset="58%" stopColor="#ffffff" stopOpacity="0" />
+              <stop offset="100%" stopColor="#4c3b28" stopOpacity="0.18" />
+            </radialGradient>
+            <filter id="map-paper-grain" x="-8%" y="-8%" width="116%" height="116%">
+              <feTurbulence baseFrequency="0.72" numOctaves="3" seed="37" type="fractalNoise" />
+              <feColorMatrix type="saturate" values="0" />
+              <feComponentTransfer>
+                <feFuncA tableValues="0 0.18" type="table" />
+              </feComponentTransfer>
             </filter>
-            <filter id="continuous-surface">
-              <feGaussianBlur stdDeviation="2.6" />
+            <filter id="cloud-field-soften" x="-28%" y="-28%" width="156%" height="156%">
+              <feGaussianBlur stdDeviation="10" />
+            </filter>
+            <filter id="cloud-core-glow" x="-70%" y="-70%" width="240%" height="240%">
+              <feGaussianBlur in="SourceGraphic" result="blur" stdDeviation="5" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
             </filter>
           </defs>
           <rect className="cloud-map-sky" x="0" y="0" width="420" height="430" />
-          <g className="cloud-surface-layer" clipPath="url(#henan-cloud-clip)">
-            {surfaceCells.map((cell) => {
-              return (
-                <rect
-                  className="cloud-surface-cell"
-                  fill={cloudLayerColor(cell.value, layer)}
-                  height={cell.height}
-                  key={cell.id}
-                  opacity={cell.opacity}
-                  width={cell.width}
-                  x={cell.x}
-                  y={cell.y}
-                >
-                  <title>{`${cloudLayerLabel(layer)} ${Math.round(cell.value)}`}</title>
-                </rect>
-              );
-            })}
+          <rect className="map-paper-noise" x="0" y="0" width="420" height="430" />
+          <rect className="map-vignette" x="0" y="0" width="420" height="430" />
+          <path className="map-land-base" d={mapGeometry.provincePath} />
+          <g clipPath="url(#henan-cloud-clip)">
+            <rect className="map-land-texture" x="0" y="0" width="420" height="430" />
+            <g className="cloud-surface-layer">
+              {surfaceBlobs.map((blob) => {
+                return (
+                  <ellipse
+                    className={`cloud-surface-blob ${blob.strength}`}
+                    cx={blob.cx}
+                    cy={blob.cy}
+                    fill={blob.color}
+                    key={blob.id}
+                    opacity={blob.opacity}
+                    rx={blob.rx}
+                    ry={blob.ry}
+                  >
+                    <title>{`${cloudLayerLabel(layer)} ${Math.round(blob.value)}`}</title>
+                  </ellipse>
+                );
+              })}
+            </g>
+            <g className="cloud-contour-layer">
+              {contourBands.map((band) => (
+                <ellipse
+                  className={`cloud-contour ${band.strength}`}
+                  cx={band.cx}
+                  cy={band.cy}
+                  key={band.id}
+                  opacity={band.opacity}
+                  rx={band.rx}
+                  ry={band.ry}
+                />
+              ))}
+            </g>
           </g>
+          <path className="map-inner-rim" d={mapGeometry.provincePath} />
           <path className="henan-outline" d={mapGeometry.provincePath} />
           {mapGeometry.cityPaths.map((city) => (
             <path className="henan-city-boundary" d={city.path} key={city.name} />
@@ -659,16 +712,28 @@ function HenanCloudMap({
               mapGeometry.bounds,
               MAP_VIEWPORT
             );
+            const haloRadius = cityHaloRadius(city.probability, region.level);
+            const labelPlacement = cityLabelPlacement(point, city.city, region.level);
+            const showLabel = labeledCityIds.has(city.city.id);
             return (
               <g className="city-node" key={city.city.id}>
-                <circle cx={point.x} cy={point.y} r={3.4} className="city-pin" />
-                <text
-                  x={point.x + (city.city.labelDx ?? 10)}
-                  y={point.y + (city.city.labelDy ?? -8)}
-                  className="city-label"
-                >
-                  {city.city.shortName}
-                </text>
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r={haloRadius}
+                  className={`city-halo ${city.grade}`}
+                />
+                <circle cx={point.x} cy={point.y} r={3.3} className="city-pin" />
+                {showLabel && (
+                  <text
+                    className={region.level === "country" ? "city-label country-label" : "city-label"}
+                    textAnchor={labelPlacement.anchor}
+                    x={point.x + labelPlacement.dx}
+                    y={point.y + labelPlacement.dy}
+                  >
+                    {city.city.shortName}
+                  </text>
+                )}
                 <title>{`${city.city.name}：${city.probability}% · ${city.reason}`}</title>
               </g>
             );
@@ -695,93 +760,107 @@ function CityRankItem({ city }: { city: HenanCityPrediction }) {
   );
 }
 
-interface CloudSurfaceCell {
+interface CloudSurfaceBlob {
   id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
   value: number;
   opacity: number;
+  color: string;
+  strength: "hot" | "warm" | "cool";
 }
 
-function buildCloudSurfaceCells(
+interface CloudContourBand {
+  id: string;
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  opacity: number;
+  strength: "hot" | "warm" | "cool";
+}
+
+function buildCloudSurfaceBlobs(
   cloudMap: CloudMap,
   layer: CloudMapLayer,
   bounds: ReturnType<typeof geoJsonBounds>
-): CloudSurfaceCell[] {
-  const surfaceRows = 76;
-  const surfaceColumns = 84;
-  const cells: CloudSurfaceCell[] = [];
-  const stepLongitude = (cloudMap.bounds.maxLongitude - cloudMap.bounds.minLongitude) / surfaceColumns;
-  const stepLatitude = (cloudMap.bounds.maxLatitude - cloudMap.bounds.minLatitude) / surfaceRows;
+): CloudSurfaceBlob[] {
+  const longitudeStep =
+    (cloudMap.bounds.maxLongitude - cloudMap.bounds.minLongitude) / Math.max(1, cloudMap.columns - 1);
+  const latitudeStep =
+    (cloudMap.bounds.maxLatitude - cloudMap.bounds.minLatitude) / Math.max(1, cloudMap.rows - 1);
 
-  for (let row = 0; row < surfaceRows; row += 1) {
-    for (let column = 0; column < surfaceColumns; column += 1) {
-      const west = cloudMap.bounds.minLongitude + column * stepLongitude;
-      const east = west + stepLongitude;
-      const north = cloudMap.bounds.maxLatitude - row * stepLatitude;
-      const south = north - stepLatitude;
-      const centerLongitude = (west + east) / 2;
-      const centerLatitude = (north + south) / 2;
-      const value = interpolateCloudLayer(cloudMap, centerLongitude, centerLatitude, layer);
+  return cloudMap.cells
+    .map((cell) => {
+      const value = cloudLayerValue(cell, layer);
       const opacity = surfaceOpacity(value, layer);
-      if (opacity <= 0) continue;
-
-      const topLeft = projectGeo(west, north, bounds, MAP_VIEWPORT);
-      const bottomRight = projectGeo(east, south, bounds, MAP_VIEWPORT);
-      cells.push({
-        id: `surface-${layer}-${row}-${column}`,
-        x: topLeft.x - 0.8,
-        y: topLeft.y - 0.8,
-        width: Math.max(1, bottomRight.x - topLeft.x + 1.6),
-        height: Math.max(1, bottomRight.y - topLeft.y + 1.6),
+      const center = projectGeo(cell.longitude, cell.latitude, bounds, MAP_VIEWPORT);
+      const east = projectGeo(cell.longitude + longitudeStep * 0.56, cell.latitude, bounds, MAP_VIEWPORT);
+      const south = projectGeo(cell.longitude, cell.latitude - latitudeStep * 0.58, bounds, MAP_VIEWPORT);
+      const stretch = 1 + ((cell.row * 13 + cell.column * 7) % 5) * 0.055;
+      return {
+        id: `surface-${layer}-${cell.id}`,
+        cx: center.x,
+        cy: center.y,
+        rx: Math.max(18, Math.abs(east.x - center.x) * 1.95 * stretch),
+        ry: Math.max(18, Math.abs(south.y - center.y) * 1.85 / stretch),
         value,
-        opacity
-      });
-    }
+        opacity,
+        color: cloudLayerColor(value, layer),
+        strength: cloudStrength(value)
+      };
+    })
+    .filter((blob) => blob.opacity > 0);
+}
+
+function buildCloudContourBands(blobs: CloudSurfaceBlob[], layer: CloudMapLayer): CloudContourBand[] {
+  const threshold = layer === "potential" ? 62 : layer === "canvas" ? 68 : 58;
+  return blobs
+    .filter((blob) => blob.value >= threshold)
+    .map((blob) => ({
+      id: `contour-${blob.id}`,
+      cx: blob.cx,
+      cy: blob.cy,
+      rx: blob.rx * 0.74,
+      ry: blob.ry * 0.72,
+      opacity: Math.min(0.46, 0.12 + (blob.value - threshold) / 130),
+      strength: blob.strength
+    }));
+}
+
+function cityHaloRadius(probability: number, level: RegionOption["level"]): number {
+  const base = level === "country" ? 5 : 7;
+  const scale = level === "country" ? 8.5 : 7.4;
+  return Math.max(base, Math.min(18, probability / scale));
+}
+
+function cityLabelPlacement(
+  point: { x: number; y: number },
+  city: HenanCityPrediction["city"],
+  level: RegionOption["level"]
+): { dx: number; dy: number; anchor: "start" | "end" } {
+  if (level !== "country") {
+    return {
+      dx: city.labelDx ?? 10,
+      dy: city.labelDy ?? -8,
+      anchor: "start"
+    };
   }
 
-  return cells;
+  const anchor = point.x > MAP_VIEWPORT.width * 0.64 ? "end" : "start";
+  return {
+    dx: anchor === "end" ? -9 : 9,
+    dy: point.y > MAP_VIEWPORT.height * 0.64 ? 13 : -8,
+    anchor
+  };
 }
 
-function interpolateCloudLayer(
-  cloudMap: CloudMap,
-  longitude: number,
-  latitude: number,
-  layer: CloudMapLayer
-): number {
-  const rowPosition =
-    ((cloudMap.bounds.maxLatitude - latitude) /
-      (cloudMap.bounds.maxLatitude - cloudMap.bounds.minLatitude)) *
-    (cloudMap.rows - 1);
-  const columnPosition =
-    ((longitude - cloudMap.bounds.minLongitude) /
-      (cloudMap.bounds.maxLongitude - cloudMap.bounds.minLongitude)) *
-    (cloudMap.columns - 1);
-  const row0 = Math.max(0, Math.min(cloudMap.rows - 1, Math.floor(rowPosition)));
-  const row1 = Math.max(0, Math.min(cloudMap.rows - 1, row0 + 1));
-  const column0 = Math.max(0, Math.min(cloudMap.columns - 1, Math.floor(columnPosition)));
-  const column1 = Math.max(0, Math.min(cloudMap.columns - 1, column0 + 1));
-  const rowT = row1 === row0 ? 0 : rowPosition - row0;
-  const columnT = column1 === column0 ? 0 : columnPosition - column0;
-  const top =
-    layerValueAt(cloudMap, row0, column0, layer) * (1 - columnT) +
-    layerValueAt(cloudMap, row0, column1, layer) * columnT;
-  const bottom =
-    layerValueAt(cloudMap, row1, column0, layer) * (1 - columnT) +
-    layerValueAt(cloudMap, row1, column1, layer) * columnT;
-  return top * (1 - rowT) + bottom * rowT;
-}
-
-function layerValueAt(
-  cloudMap: CloudMap,
-  row: number,
-  column: number,
-  layer: CloudMapLayer
-): number {
-  const cell = cloudMap.cells.find((item) => item.row === row && item.column === column);
-  return cell ? cloudLayerValue(cell, layer) : 0;
+function cloudStrength(value: number): "hot" | "warm" | "cool" {
+  if (value >= 70) return "hot";
+  if (value >= 52) return "warm";
+  return "cool";
 }
 
 function surfaceOpacity(value: number, layer: CloudMapLayer): number {

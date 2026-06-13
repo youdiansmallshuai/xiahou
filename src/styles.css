@@ -580,16 +580,66 @@ h1 {
 }
 
 .cloud-map-sky {
-  fill: #f7f8ef;
+  fill: url("#map-paper-gradient");
 }
 
-.cloud-surface-cell {
+.map-paper-noise {
+  filter: url("#map-paper-grain");
+  opacity: 0.36;
+  pointer-events: none;
+}
+
+.map-vignette {
+  fill: url("#map-vignette");
+  pointer-events: none;
+}
+
+.map-land-base {
+  fill: rgba(255, 252, 240, 0.7);
+  stroke: rgba(117, 131, 106, 0.3);
+  stroke-width: 1;
+}
+
+.map-land-texture {
+  fill: rgba(255, 255, 255, 0.01);
+  filter: url("#map-paper-grain");
+  opacity: 0.38;
+}
+
+.cloud-surface-blob {
   mix-blend-mode: multiply;
-  shape-rendering: auto;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .cloud-surface-layer {
-  filter: url("#continuous-surface");
+  filter: url("#cloud-field-soften");
+  opacity: 0.94;
+}
+
+.cloud-contour {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 1.35;
+}
+
+.cloud-contour.hot {
+  stroke: rgba(180, 66, 45, 0.76);
+}
+
+.cloud-contour.warm {
+  stroke: rgba(206, 142, 63, 0.62);
+}
+
+.cloud-contour.cool {
+  stroke: rgba(124, 148, 130, 0.5);
+}
+
+.map-inner-rim {
+  fill: none;
+  stroke: rgba(255, 252, 240, 0.8);
+  stroke-width: 5.5;
+  opacity: 0.58;
 }
 
 .henan-outline {
@@ -645,6 +695,29 @@ h1 {
   stroke-width: 2;
 }
 
+.city-halo {
+  fill: rgba(130, 154, 121, 0.24);
+  filter: url("#cloud-core-glow");
+  mix-blend-mode: multiply;
+}
+
+.city-halo.high {
+  fill: rgba(217, 84, 50, 0.34);
+}
+
+.city-halo.mediumHigh {
+  fill: rgba(225, 151, 63, 0.3);
+}
+
+.city-halo.medium {
+  fill: rgba(215, 182, 97, 0.26);
+}
+
+.city-halo.low,
+.city-halo.veryLow {
+  fill: rgba(123, 148, 130, 0.19);
+}
+
 .city-label {
   fill: #2b302d;
   font-size: 11px;
@@ -657,6 +730,12 @@ h1 {
   pointer-events: none;
 }
 
+.city-label.country-label {
+  font-size: 10px;
+  font-weight: 900;
+  stroke-width: 3.8px;
+}
+
 .map-legend {
   display: flex;
   flex-wrap: wrap;
@@ -667,8 +746,9 @@ h1 {
   font-weight: 700;
 }
 
-.cloud-map .cloud-surface-cell {
-  transition: opacity 140ms ease, fill 140ms ease;
+.cloud-map .cloud-surface-blob,
+.cloud-map .cloud-contour {
+  transition: opacity 180ms ease, fill 180ms ease, stroke 180ms ease;
 }
 
 .map-legend span {
@@ -1616,28 +1696,80 @@ h1 {
   border: 9px solid #fbf4df;
   border-radius: 4px;
   background:
-    linear-gradient(180deg, #f9f7ed, #efe7d0);
+    linear-gradient(180deg, #fcf7e8, #e8dcc2);
   box-shadow:
-    0 20px 42px rgba(0, 0, 0, 0.24),
-    inset 0 0 0 1px rgba(82, 68, 49, 0.18);
+    0 24px 48px rgba(0, 0, 0, 0.28),
+    0 2px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(82, 68, 49, 0.2);
 }
 
 .cloud-map-sky {
-  fill: #f5f1e4;
+  fill: url("#map-paper-gradient");
 }
 
-.cloud-surface-cell {
+.map-paper-noise {
+  filter: url("#map-paper-grain");
+  opacity: 0.42;
+}
+
+.map-vignette {
+  fill: url("#map-vignette");
+}
+
+.map-land-base {
+  fill: rgba(255, 250, 232, 0.78);
+  stroke: rgba(100, 112, 90, 0.28);
+  stroke-width: 1.1;
+}
+
+.map-land-texture {
+  fill: rgba(255, 255, 255, 0.01);
+  filter: url("#map-paper-grain");
+  opacity: 0.42;
+}
+
+.cloud-surface-layer {
+  filter: url("#cloud-field-soften");
+  opacity: 0.96;
+}
+
+.cloud-surface-blob {
   mix-blend-mode: multiply;
 }
 
+.cloud-contour {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 1.45;
+}
+
+.cloud-contour.hot {
+  stroke: rgba(176, 56, 41, 0.78);
+}
+
+.cloud-contour.warm {
+  stroke: rgba(218, 139, 55, 0.66);
+}
+
+.cloud-contour.cool {
+  stroke: rgba(111, 137, 112, 0.48);
+}
+
+.map-inner-rim {
+  fill: none;
+  stroke: rgba(255, 250, 232, 0.76);
+  stroke-width: 5.8;
+  opacity: 0.58;
+}
+
 .henan-outline {
-  stroke: #71876f;
-  stroke-width: 2.4;
+  stroke: #647c66;
+  stroke-width: 2.55;
 }
 
 .henan-city-boundary {
-  stroke: rgba(82, 93, 76, 0.58);
-  stroke-width: 1;
+  stroke: rgba(64, 76, 62, 0.48);
+  stroke-width: 0.85;
 }
 
 .city-pin {
@@ -1646,12 +1778,40 @@ h1 {
   stroke-width: 2.3;
 }
 
+.city-halo {
+  fill: rgba(126, 152, 118, 0.22);
+  filter: url("#cloud-core-glow");
+  mix-blend-mode: multiply;
+}
+
+.city-halo.high {
+  fill: rgba(217, 84, 50, 0.36);
+}
+
+.city-halo.mediumHigh {
+  fill: rgba(238, 156, 65, 0.32);
+}
+
+.city-halo.medium {
+  fill: rgba(215, 182, 97, 0.28);
+}
+
+.city-halo.low,
+.city-halo.veryLow {
+  fill: rgba(118, 142, 120, 0.18);
+}
+
 .city-label {
   fill: #272720;
   font-size: 11px;
   font-weight: 900;
   stroke: #fff8e9;
   stroke-width: 4.3px;
+}
+
+.city-label.country-label {
+  font-size: 10px;
+  stroke-width: 3.8px;
 }
 
 .map-legend {
