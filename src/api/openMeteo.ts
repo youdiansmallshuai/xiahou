@@ -31,7 +31,7 @@ export interface WanxiaDataLoadResult {
   source: WanxiaDataLoadSource;
 }
 
-const WEATHER_CHUNK_SIZE = 9;
+const WEATHER_CHUNK_SIZE = 30;
 const CLOUD_GRID_ROWS = 7;
 const CLOUD_GRID_COLUMNS = 9;
 const WEATHER_API_ENDPOINT = "/api/open-meteo/v1/forecast";

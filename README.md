@@ -86,6 +86,7 @@ npm run build:server
 WANXIA_PORT=8787 \
 WANXIA_CACHE_FILE=/tmp/wanxia-cache.json \
 WANXIA_REFRESH_INTERVAL_MS=3600000 \
+WANXIA_REGION_REFRESH_DELAY_MS=3000 \
 node dist-server/wanxia-server.mjs
 ```
 
@@ -100,6 +101,7 @@ GET /api/wanxia-cache/status
 
 - `day`: `today` 或 `tomorrow`
 - `eventType`: `sunrise` 或 `sunset`
+- `regionId`: `china` 或省级行政区代码，例如 `410000`
 
 部署说明见 [docs/deployment.md](docs/deployment.md)。
 

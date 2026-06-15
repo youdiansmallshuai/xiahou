@@ -22,6 +22,7 @@ dist-server/wanxia-server.mjs # 后台缓存服务 bundle
 WANXIA_PORT=8787 \
 WANXIA_CACHE_FILE=/var/lib/wanxia/cache.json \
 WANXIA_REFRESH_INTERVAL_MS=3600000 \
+WANXIA_REGION_REFRESH_DELAY_MS=3000 \
 node /opt/wanxia/server/wanxia-server.mjs
 ```
 
@@ -33,15 +34,18 @@ node /opt/wanxia/server/wanxia-server.mjs
 | `WANXIA_CACHE_FILE` | `/tmp/wanxia-cache.json` | 持久化缓存文件 |
 | `WANXIA_REFRESH_INTERVAL_MS` | `3600000` | 预热间隔 |
 | `WANXIA_FAILED_REFRESH_COOLDOWN_MS` | `300000` | 失败后请求触发刷新冷却 |
+| `WANXIA_REGION_REFRESH_DELAY_MS` | `3000` | 全量预热时每个区域之间的串行等待时间 |
 
-后台会默认预热全国四组数据，省份数据按请求懒加载并持久化：
+后台会默认预热全国 + 全部省级区域的四组数据，并在区域之间串行等待，避免短时间集中请求第三方接口：
 
 ```text
-china/today/sunrise
-china/today/sunset
-china/tomorrow/sunrise
-china/tomorrow/sunset
+{china + 34 provinces}/today/sunrise
+{china + 34 provinces}/today/sunset
+{china + 34 provinces}/tomorrow/sunrise
+{china + 34 provinces}/tomorrow/sunset
 ```
+
+已有缓存会优先返回；如果缓存过期，后台异步刷新，不阻塞用户请求。遇到 429 或 rate-limit 类错误时，本轮刷新会停止并进入失败冷却。
 
 ## systemd Example
 
@@ -62,6 +66,7 @@ Environment=TZ=Asia/Shanghai
 Environment=WANXIA_PORT=8787
 Environment=WANXIA_CACHE_FILE=/var/lib/wanxia/cache.json
 Environment=WANXIA_REFRESH_INTERVAL_MS=3600000
+Environment=WANXIA_REGION_REFRESH_DELAY_MS=3000
 
 [Install]
 WantedBy=multi-user.target
